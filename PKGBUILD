@@ -1,8 +1,9 @@
 # Maintainer: Trance233<huaji2475785724@163.com>
 
 pkgname=trance-cli
+_pkgname=trance
 pkgver=1.0.0
-pkgrel=1
+pkgrel=2
 pkgdesc="A script snippet collection"
 arch=('x86_64')
 url=""
@@ -15,7 +16,7 @@ optdepends=(
 makedepends=(go)
 options=(!debug)
 source=(
-    "${pkgname}::git+https://github.com/popjdh/trance-cli.git#tag=v1.0.0-bugfix"
+    "${pkgname}::git+https://github.com/popjdh/trance-cli.git#tag=v1.0.0-bugfix.1"
 )
 sha256sums=(
     'SKIP'
@@ -23,12 +24,12 @@ sha256sums=(
 
 build() {
 	cd "$srcdir"/"$pkgname"
-    CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o "$pkgname" main.go
-    ./"$pkgname" completion bash > "$pkgname".bash
+    CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o "$_pkgname" main.go
+    ./"$_pkgname" completion bash > "$_pkgname".bash
 }
 
 package() {
 	cd "$srcdir"
-    install -Dm755 "$pkgname/$pkgname" "$pkgdir/usr/bin/$pkgname"
-    install -Dm644 "$pkgname/$pkgname.bash" "$pkgdir"/etc/bash_completion.d/"$pkgname".bash
+    install -Dm755 "$pkgname/$_pkgname" "$pkgdir/usr/bin/$_pkgname"
+    install -Dm644 "$pkgname/$_pkgname.bash" "$pkgdir"/etc/bash_completion.d/"$_pkgname".bash
 }
