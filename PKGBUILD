@@ -15,7 +15,7 @@ optdepends=(
 makedepends=(go)
 options=(!debug)
 source=(
-    "${pkgname}::git+https://https://github.com/popjdh/trance-cli.git#tag=v${pkgver}"
+    "${pkgname}::git+https://github.com/popjdh/trance-cli.git#tag=v1.0.0-bugfix"
 )
 sha256sums=(
     'SKIP'
