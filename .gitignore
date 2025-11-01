@@ -1,0 +1,10 @@
+# go
+/trance
+/vendor/
+# makepkg
+/src/
+/pkg/
+/*.pkg.tar*
+# IDE
+/.idea/
+.vscode/
