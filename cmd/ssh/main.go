@@ -1,6 +1,8 @@
 package ssh
 
 import (
+	"trance-cli/internal/system"
+
 	"github.com/spf13/cobra"
 )
 
@@ -20,5 +22,7 @@ func Register(parentCmd *cobra.Command) {
 	cmd.Flags().BoolVarP(&executor.DryRun, "dry-run", "n", false, "Print the commands that would be executed, but do not execute them")
 	cmd.Flags().BoolVarP(&executor.Proxy, "proxy", "p", false, "Create a SOCKS proxy on 0.0.0.0:1080")
 	cmd.DisableFlagsInUseLine = true
-	parentCmd.AddCommand(cmd)
+	if system.IsCommandAvailable("ssh") {
+		parentCmd.AddCommand(cmd)
+	}
 }

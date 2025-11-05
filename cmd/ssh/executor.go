@@ -7,13 +7,26 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"trance-cli/internal/logging"
 
+	"github.com/kevinburke/ssh_config"
 	"github.com/spf13/cobra"
 )
+
+type Host struct {
+	Alias     string
+	Hostname  string
+	Port      string
+	User      string
+	ProxyJump string
+	Source    string
+}
+
+func (host Host) FilterValue() string {
+	return host.Alias
+}
 
 type Executor struct {
 	logger logging.Logger
@@ -28,11 +41,12 @@ func (executor *Executor) Run(cmd *cobra.Command, args []string) {
 		State:     logging.LoggerStateNewLine,
 	}
 
-	var host string
+	var hostArg string
 	var wrapperArgs []string
 	var sshOptions []string
 	var remoteCommandArgs []string
 
+	// 解析参数
 	var separatorIndexes []int
 	for i, arg := range args {
 		if arg == "--" {
@@ -65,48 +79,59 @@ func (executor *Executor) Run(cmd *cobra.Command, args []string) {
 		} else if len(arg) > 0 && arg[0] == '-' {
 			executor.logger.PrintfErr(logging.LogModeAppend, true, "未知参数: %s", arg)
 		} else {
-			if host != "" {
+			if hostArg != "" {
 				executor.logger.PrintfErr(logging.LogModeAppend, true, "多个主机, 保留最后一个: %s", arg)
 			}
-			host = arg
+			hostArg = arg
 		}
 	}
-	if host == "" {
-		hosts, err := executor.collectHosts()
-		if err != nil {
-			executor.logger.PrintfErr(logging.LogModeAppend, true, err.Error())
-			os.Exit(1)
-		}
-		if len(hosts) == 0 {
-			executor.logger.PrintfErr(logging.LogModeAppend, true, "未找到可供选择的主机")
-			os.Exit(1)
-		}
-		selectedHost, err := RunSelector(hosts)
-		if err != nil {
-			executor.logger.PrintfErr(logging.LogModeAppend, true, err.Error())
-			os.Exit(1)
-		}
-		host = selectedHost
+	// 收集可用主机
+	hosts, err := executor.collectSSHHosts()
+	if err != nil {
+		executor.logger.PrintfErr(logging.LogModeAppend, true, err.Error())
+		os.Exit(1)
 	}
+	if hostArg == "" && len(hosts) == 0 {
+		executor.logger.PrintfErr(logging.LogModeAppend, true, "未找到可供选择的主机, 请检查配置")
+		os.Exit(1)
+	}
+	// 代理模式下忽略用户传入的 sshOptions remoteCommandArgs
 	if executor.Proxy {
-		err := executor.executeSSHProxy(host, sshOptions)
-		if err != nil {
+		sshOptions = []string{}
+		sshOptions = append(sshOptions, "-CqTNn", "-D", "0.0.0.0:1080")
+		remoteCommandArgs = []string{}
+	}
+	// 初始参数传递给 TUI
+	tuiResult, err := RunSelector(hosts, hostArg, sshOptions, remoteCommandArgs)
+	if err != nil {
+		// 用户可能按 ESC 退出, 此时不应视为错误
+		if err.Error() != "未选择主机" {
 			executor.logger.PrintfErr(logging.LogModeAppend, true, err.Error())
 		}
+		os.Exit(1)
 	}
-	err := executor.executeSSH(host, sshOptions, remoteCommandArgs)
+
+	finalUsr, finalServer, finalPort := parseHostString(tuiResult.HostStr)
+	finalProxyJump := tuiResult.ProxyJump
+	finalSshOptions := tuiResult.SshOptions
+	finalRemoteCommandArgs := tuiResult.RemoteCommandArgs
+
+	err = executor.runSSH(finalSshOptions, finalUsr, finalServer, finalPort, finalProxyJump, finalRemoteCommandArgs)
 	if err != nil {
 		executor.logger.PrintfErr(logging.LogModeAppend, true, err.Error())
 	}
 }
 
-func (executor *Executor) collectHosts() ([]string, error) {
-	hostSet := make(map[string]struct{})
+func (executor *Executor) collectSSHHosts() ([]Host, error) {
+	// Alias 去重
+	hostMap := make(map[string]Host)
+	// 获取当前用户主目录
 	usr, err := user.Current()
 	if err != nil {
 		return nil, fmt.Errorf("获取当前用户失败\n%w", err)
 	}
 	homeDir := usr.HomeDir
+	// 解析 ssh_config
 	configPaths := []string{
 		filepath.Join(homeDir, ".ssh", "config"),
 		"/etc/ssh/ssh_config",
@@ -118,47 +143,136 @@ func (executor *Executor) collectHosts() ([]string, error) {
 		}
 	}
 	for _, path := range configPaths {
-		err := parseSSHConfig(path, hostSet)
+		err := parseSSHConfig(path, hostMap)
 		if err != nil {
-			return nil, err
+			executor.logger.PrintfErr(logging.LogModeAppend, true, err.Error())
 		}
 	}
+	// 解析 known_hosts
 	knownHostsPath := filepath.Join(homeDir, ".ssh", "known_hosts")
-	err = parseKnownHosts(knownHostsPath, hostSet)
+	err = parseKnownHosts(knownHostsPath, hostMap)
 	if err != nil {
-		return nil, err
+		executor.logger.PrintfErr(logging.LogModeAppend, true, err.Error())
 	}
-	err = parseEtcHosts(hostSet)
+	// 解析 etc_hosts
+	err = parseEtcHosts(hostMap)
 	if err != nil {
-		return nil, err
+		executor.logger.PrintfErr(logging.LogModeAppend, true, err.Error())
 	}
-	hosts := make([]string, 0, len(hostSet))
-	for host := range hostSet {
+	// 转换 map 为 slice
+	hosts := make([]Host, 0, len(hostMap))
+	for _, host := range hostMap {
 		hosts = append(hosts, host)
 	}
-	sort.Strings(hosts)
+
+	// 按照 Source 分组排序, 组内按 Alias 排序
+	sourceOrder := map[string]int{
+		"ssh_config":  0,
+		"etc_hosts":   1,
+		"known_hosts": 2,
+	}
+	sort.Slice(hosts, func(i, j int) bool {
+		orderI, okI := sourceOrder[hosts[i].Source]
+		if !okI {
+			orderI = 99 // 其他未知来源排在最后
+		}
+		orderJ, okJ := sourceOrder[hosts[j].Source]
+		if !okJ {
+			orderJ = 99
+		}
+
+		if orderI != orderJ {
+			return orderI < orderJ
+		}
+		return hosts[i].Alias < hosts[j].Alias
+	})
+
 	return hosts, nil
 }
 
-var hostPattern = regexp.MustCompile(`(?i)^\s*host(name)?\s+`)
-
-func parseSSHConfig(path string, hostSet map[string]struct{}) error {
-	file, err := os.Open(path)
+func parseSSHConfig(path string, hostMap map[string]Host) error {
+	f, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("读取 SSH 配置文件失败: %s\n%w", path, err)
 	}
-	defer func() {
+	defer func(file *os.File) {
 		_ = file.Close()
-	}()
+	}(f)
+
+	cfg, err := ssh_config.Decode(f)
+	if err != nil {
+		return fmt.Errorf("解析 SSH 配置文件失败: %s\n%w", path, err)
+	}
+	for _, host := range cfg.Hosts {
+		for _, p := range host.Patterns {
+			alias := p.String()
+			// 忽略通配符
+			if strings.ContainsAny(alias, "*?") {
+				continue
+			}
+			// 已存在更高优先级的配置, 跳过
+			if _, ok := hostMap[alias]; ok {
+				continue
+			}
+
+			hostname, _ := cfg.Get(alias, "HostName")
+			if hostname == "" {
+				hostname = alias
+			}
+
+			port, _ := cfg.Get(alias, "Port")
+			usr, _ := cfg.Get(alias, "User")
+			proxy, _ := cfg.Get(alias, "ProxyJump")
+
+			hostMap[alias] = Host{
+				Alias:     alias,
+				Hostname:  hostname,
+				Port:      port,
+				User:      usr,
+				ProxyJump: proxy,
+				Source:    "ssh_config",
+			}
+		}
+	}
+	return nil
+}
+
+func parseKnownHosts(path string, hostMap map[string]Host) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("读取 known_hosts 文件失败: %s\n%w", path, err)
+	}
+	defer func(file *os.File) {
+		_ = file.Close()
+	}(file)
+
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		line := scanner.Text()
-		if hostPattern.MatchString(line) {
-			fieldsStr := hostPattern.ReplaceAllString(line, "")
-			fields := strings.Fields(fieldsStr)
-			for _, host := range fields {
-				if !strings.ContainsAny(host, "*?%") {
-					hostSet[host] = struct{}{}
+		fields := strings.SplitN(scanner.Text(), " ", 2)
+		if len(fields) > 0 {
+			hostsStr := strings.Split(fields[0], ",")
+			for _, hostStr := range hostsStr {
+				// 跳过 Hashed Hostnames
+				if strings.HasPrefix(hostStr, "|") {
+					continue
+				}
+				hostname := hostStr
+				port := ""
+				// known_hosts 中 IPv6 地址格式为 [hostname]:port
+				if strings.HasPrefix(hostname, "[") && strings.Contains(hostname, "]:") {
+					parts := strings.SplitN(strings.TrimPrefix(hostname, "["), "]:", 2)
+					if len(parts) == 2 {
+						hostname = parts[0]
+						port = parts[1]
+					}
+				}
+				if _, ok := hostMap[hostname]; !ok {
+					hostMap[hostname] = Host{
+						Alias:    hostname,
+						Hostname: hostname,
+						Port:     port,
+						Source:   "known_hosts",
+					}
 				}
 			}
 		}
@@ -166,83 +280,78 @@ func parseSSHConfig(path string, hostSet map[string]struct{}) error {
 	return nil
 }
 
-func parseKnownHosts(path string, hostSet map[string]struct{}) error {
-	file, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("读取已知主机文件失败: %s\n%w", path, err)
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		fields := strings.SplitN(scanner.Text(), " ", 2)
-		if len(fields) > 0 {
-			hosts := strings.Split(fields[0], ",")
-			for _, host := range hosts {
-				host = strings.TrimPrefix(host, "[")
-				host = strings.SplitN(host, "]:", 2)[0]
-				hostSet[host] = struct{}{}
-			}
-		}
-	}
-	return nil
-}
-
-func parseEtcHosts(hostSet map[string]struct{}) error {
+func parseEtcHosts(hostMap map[string]Host) error {
 	file, err := os.Open("/etc/hosts")
 	if err != nil {
 		return fmt.Errorf("读取 /etc/hosts 文件失败\n%w", err)
 	}
-	defer func() {
+	defer func(file *os.File) {
 		_ = file.Close()
-	}()
+	}(file)
+
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if commentIdx := strings.Index(line, "#"); commentIdx != -1 {
 			line = line[:commentIdx]
 		}
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
 		fields := strings.Fields(line)
 		if len(fields) > 1 {
-			for _, host := range fields[1:] {
-				hostSet[host] = struct{}{}
+			for _, hostname := range fields[1:] {
+				if _, ok := hostMap[hostname]; !ok {
+					hostMap[hostname] = Host{
+						Alias:    hostname,
+						Hostname: hostname,
+						Source:   "etc_hosts",
+					}
+				}
 			}
 		}
 	}
 	return nil
 }
 
-func (executor *Executor) executeSSH(host string, sshOptions []string, remoteCommandArgs []string) error {
-	finalSSHArgs := []string{host}
-	finalSSHArgs = append(sshOptions, finalSSHArgs...)
-	finalSSHArgs = append(finalSSHArgs, remoteCommandArgs...)
-	return executor.runSSH(finalSSHArgs...)
+// 按 <user>@<server>:<port> 进行解析
+func parseHostString(hostStr string) (usr, server, port string) {
+	if i := strings.LastIndex(hostStr, "@"); i != -1 {
+		usr = hostStr[:i]
+		hostStr = hostStr[i+1:]
+	}
+	// IPv6 按照 [::1]:22 形式处理
+	if i := strings.LastIndex(hostStr, ":"); i != -1 {
+		// 确保冒号不是IPv6地址的一部分
+		if !strings.Contains(hostStr, "]") || i > strings.LastIndex(hostStr, "]") {
+			server = hostStr[:i]
+			port = hostStr[i+1:]
+			return
+		}
+	}
+	server = hostStr
+	server = strings.Trim(server, "[]")
+	return
 }
 
-func (executor *Executor) executeSSHProxy(host string, sshOptions []string) error {
-	finalSSHArgs := []string{"-CqTNn", "-D", "0.0.0.0:1080"}
-	finalSSHArgs = append(sshOptions, finalSSHArgs...)
-	finalSSHArgs = append(finalSSHArgs, host)
-	return executor.runSSH(finalSSHArgs...)
-}
-
-func (executor *Executor) runSSH(args ...string) error {
+func (executor *Executor) runSSH(sshOptions []string, user string, server string, port string, proxyJump string, remoteCommandArgs []string) error {
+	finalArgs := []string{}
+	finalArgs = append(finalArgs, sshOptions...)
+	if user != "" {
+		finalArgs = append(finalArgs, "-o", fmt.Sprintf("User=%s", user))
+	}
+	if port != "" {
+		finalArgs = append(finalArgs, "-o", fmt.Sprintf("Port=%s", port))
+	}
+	if proxyJump != "" {
+		finalArgs = append(finalArgs, "-o", fmt.Sprintf("ProxyJump=%s", proxyJump))
+	}
+	finalArgs = append(finalArgs, server)
+	finalArgs = append(finalArgs, remoteCommandArgs...)
+	executor.logger.PrintfOut(logging.LogModeAppend, true, "ssh %s", strings.Join(finalArgs, " "))
 	if executor.DryRun {
-		executor.logger.PrintfOut(logging.LogModeAppend, true, "ssh %s", strings.Join(args, " "))
 		return nil
 	}
-	cmd := exec.Command("ssh", args...)
+	cmd := exec.Command("ssh", finalArgs...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("SSH 命令执行失败: ssh %s\n%w", strings.Join(args, " "), err)
-	}
-	return nil
+	return cmd.Run()
 }
