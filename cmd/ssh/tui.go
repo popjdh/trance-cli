@@ -46,7 +46,6 @@ func newTuiModel(hosts []Host, defaultPresetHostStr string, defaultSshOptions []
 	hostStrInput.Placeholder = "user@host:port or alias"
 	hostStrInput.Focus()
 	hostStrInput.CharLimit = 128
-	hostStrInput.Width = 60
 	hostStrInput.PromptStyle = tuiTextInputFocusedStyle
 	hostStrInput.TextStyle = tuiTextInputFocusedStyle
 	hostStrInput.SetValue(defaultPresetHostStr)
@@ -54,26 +53,23 @@ func newTuiModel(hosts []Host, defaultPresetHostStr string, defaultSshOptions []
 	proxyJumpInput := textinput.New()
 	proxyJumpInput.Placeholder = "user@host:port or alias"
 	proxyJumpInput.CharLimit = 128
-	proxyJumpInput.Width = 60
 	// sshOptions 输入框
 	sshOptionsInput := textinput.New()
 	sshOptionsInput.Placeholder = "-o StrictHostKeyChecking=no -o ConnectTimeout=5"
 	sshOptionsInput.CharLimit = 256
-	sshOptionsInput.Width = 60
 	sshOptionsInput.SetValue(strings.Join(defaultSshOptions, " "))
 	// remoteCommandArgs 输入框
 	remoteCommandArgsInput := textinput.New()
 	remoteCommandArgsInput.Placeholder = "ls -l /"
 	remoteCommandArgsInput.CharLimit = 256
-	remoteCommandArgsInput.Width = 60
 	remoteCommandArgsInput.SetValue(strings.Join(defaultRemoteCommandArgs, " "))
 	// HostStr 预览表格
 	hostTableColumns := []table.Column{
-		{Title: "Alias", Width: 35},
-		{Title: "User", Width: 15},
-		{Title: "Hostname", Width: 35},
+		{Title: "Alias", Width: 15},
+		{Title: "User", Width: 10},
+		{Title: "Hostname", Width: 15},
 		{Title: "Port", Width: 6},
-		{Title: "ProxyJump", Width: 35},
+		{Title: "ProxyJump", Width: 15},
 		{Title: "Source", Width: 15},
 	}
 	hostTableRows := make([]table.Row, len(hosts))
@@ -91,7 +87,7 @@ func newTuiModel(hosts []Host, defaultPresetHostStr string, defaultSshOptions []
 		table.WithColumns(hostTableColumns),
 		table.WithRows(hostTableRows),
 		table.WithFocused(true),
-		table.WithHeight(10),
+		table.WithHeight(3),
 	)
 	hostTableStyle := table.DefaultStyles()
 	hostTableStyle.Header = hostTableStyle.Header.
@@ -270,7 +266,25 @@ func (model *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmds = append(cmds, cmd)
 	// 处理窗口大小调整
 	if size, ok := msg.(tea.WindowSizeMsg); ok {
-		model.hostTable.SetHeight(size.Height - 10)
+		// 整体内容宽度
+		contentWidth := size.Width - 2
+		// 输入框宽度
+		inputWidth := contentWidth - 16
+		model.hostStrInput.Width = inputWidth
+		model.proxyJumpInput.Width = inputWidth
+		model.sshOptionsInput.Width = inputWidth
+		model.remoteCommandArgsInput.Width = inputWidth
+		// 表格尺寸
+		model.hostTable.SetHeight(size.Height - 9)
+		flexColumnWidth := (contentWidth - (10 + 6 + 15) - 10) / 3
+		model.hostTable.SetColumns([]table.Column{
+			{Title: "Alias", Width: flexColumnWidth},
+			{Title: "User", Width: 10},
+			{Title: "Hostname", Width: flexColumnWidth},
+			{Title: "Port", Width: 6},
+			{Title: "ProxyJump", Width: flexColumnWidth},
+			{Title: "Source", Width: 15},
+		})
 	}
 	return model, tea.Batch(cmds...)
 }
