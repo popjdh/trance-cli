@@ -2,8 +2,8 @@
 
 pkgname=trance-cli
 _pkgname=trance
-pkgver=1.0.0
-pkgrel=2
+pkgver=1.0.1
+pkgrel=1
 pkgdesc="A script snippet collection"
 arch=('x86_64')
 url=""
@@ -16,7 +16,7 @@ optdepends=(
 makedepends=(go)
 options=(!debug)
 source=(
-    "${pkgname}::git+https://github.com/popjdh/trance-cli.git#tag=v1.0.0-bugfix.1"
+    "${pkgname}::git+https://github.com/popjdh/trance-cli.git#tag=v1.0.1"
 )
 sha256sums=(
     'SKIP'
