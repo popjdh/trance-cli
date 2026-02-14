@@ -17,7 +17,7 @@ var cmd = &cobra.Command{
 		executor.Run(cmd, args)
 	},
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"jpg", "jpeg", "png", "bmp", "tiff", "gif", "webp"}, cobra.ShellCompDirectiveFilterFileExt
+		return []string{"jpg", "jpeg", "png", "bmp", "tiff", "gif", "webp", "jxl"}, cobra.ShellCompDirectiveFilterFileExt
 	},
 }
 

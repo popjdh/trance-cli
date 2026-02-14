@@ -100,7 +100,7 @@ func (executor *Executor) collectFiles(rawPaths []string) ([]string, error) {
 					if !entry.IsDir() {
 						ext := strings.ToLower(filepath.Ext(currentPath))
 						switch ext {
-						case ".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".gif", ".webp":
+						case ".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".gif", ".webp", ".jxl":
 							srcFilePaths = append(srcFilePaths, currentPath)
 						}
 					}
@@ -118,7 +118,7 @@ func (executor *Executor) collectFiles(rawPaths []string) ([]string, error) {
 		} else {
 			ext := strings.ToLower(filepath.Ext(rawPath))
 			switch ext {
-			case ".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".gif", ".webp":
+			case ".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".gif", ".webp", ".jxl":
 				srcFilePaths = append(srcFilePaths, rawPath)
 				break
 			default:
