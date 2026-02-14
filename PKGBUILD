@@ -3,7 +3,7 @@
 pkgname=trance-cli
 _pkgname=trance
 pkgver=1.0.3
-pkgrel=1
+pkgrel=2
 pkgdesc="A script snippet collection"
 arch=('x86_64')
 url=""
