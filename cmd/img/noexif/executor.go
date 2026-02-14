@@ -156,7 +156,7 @@ func (executor *Executor) processFile(srcFilePath string) error {
 		executor.logInProgress(srcFilePath, "执行 exiftool 命令")
 	}
 
-	cmd := exec.Command("exiftool", "-all=", "-overwrite_original", srcFilePath)
+	cmd := exec.Command("exiftool", "-all=", "-overwrite_original", "-m", srcFilePath)
 	var cmdErr bytes.Buffer
 	cmd.Stdout = io.Discard
 	cmd.Stderr = &cmdErr
