@@ -23,7 +23,7 @@ var cmd = &cobra.Command{
 
 func Register(parentCmd *cobra.Command) {
 	cmd.Flags().BoolVarP(&executor.Verbose, "verbose", "v", false, "verbosely list files processed")
-	cmd.Flags().BoolVarP(&executor.Recursive, "recursion", "r", true, "recurse into directories")
+	cmd.Flags().BoolVarP(&executor.Recursive, "recursion", "r", false, "recurse into directories")
 	if system.IsCommandAvailable("exiftool") {
 		parentCmd.AddCommand(cmd)
 	}
