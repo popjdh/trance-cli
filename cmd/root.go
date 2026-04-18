@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"trance-cli/cmd/arc"
 	"trance-cli/cmd/img"
 	"trance-cli/cmd/ssh"
 
@@ -18,6 +19,7 @@ var cmd = &cobra.Command{
 func Execute() {
 	img.Register(cmd)
 	ssh.Register(cmd)
+	arc.Register(cmd)
 	if err := cmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
