@@ -342,7 +342,7 @@ func (executor *Executor) processExtractJob(job ExtractJob, passwords []string) 
 		}
 		if executor.Verbose {
 			cmdErrMsg := strings.TrimRight(cmdErr.String(), "\r\n")
-			executor.logger.PrintfErr(logging.LogModeAppend, true, cmdErrMsg)
+			executor.logger.PrintfErr(logging.LogModeAppend, true, "%s", cmdErrMsg)
 		}
 		_ = os.RemoveAll(job.DestPath)
 	}

@@ -73,7 +73,7 @@ func (executor *Executor) Run(cmd *cobra.Command, args []string) {
 		} else if arg == "-h" || arg == "--help" {
 			err := cmd.Help()
 			if err != nil {
-				executor.logger.PrintfErr(logging.LogModeAppend, true, err.Error())
+				executor.logger.PrintfErr(logging.LogModeAppend, true, "%s", err.Error())
 			}
 			os.Exit(0)
 		} else if len(arg) > 0 && arg[0] == '-' {
@@ -88,7 +88,7 @@ func (executor *Executor) Run(cmd *cobra.Command, args []string) {
 	// 收集可用主机
 	hosts, err := executor.collectSSHHosts()
 	if err != nil {
-		executor.logger.PrintfErr(logging.LogModeAppend, true, err.Error())
+		executor.logger.PrintfErr(logging.LogModeAppend, true, "%s", err.Error())
 		os.Exit(1)
 	}
 	if hostArg == "" && len(hosts) == 0 {
@@ -106,7 +106,7 @@ func (executor *Executor) Run(cmd *cobra.Command, args []string) {
 	if err != nil {
 		// 用户可能按 ESC 退出, 此时不应视为错误
 		if err.Error() != "未选择主机" {
-			executor.logger.PrintfErr(logging.LogModeAppend, true, err.Error())
+			executor.logger.PrintfErr(logging.LogModeAppend, true, "%s", err.Error())
 		}
 		os.Exit(1)
 	}
@@ -118,7 +118,7 @@ func (executor *Executor) Run(cmd *cobra.Command, args []string) {
 
 	err = executor.runSSH(finalSshOptions, finalUsr, finalServer, finalPort, finalProxyJump, finalRemoteCommandArgs)
 	if err != nil {
-		executor.logger.PrintfErr(logging.LogModeAppend, true, err.Error())
+		executor.logger.PrintfErr(logging.LogModeAppend, true, "%s", err.Error())
 	}
 }
 
@@ -145,19 +145,19 @@ func (executor *Executor) collectSSHHosts() ([]Host, error) {
 	for _, path := range configPaths {
 		err := parseSSHConfig(path, hostMap)
 		if err != nil {
-			executor.logger.PrintfErr(logging.LogModeAppend, true, err.Error())
+			executor.logger.PrintfErr(logging.LogModeAppend, true, "%s", err.Error())
 		}
 	}
 	// 解析 known_hosts
 	knownHostsPath := filepath.Join(homeDir, ".ssh", "known_hosts")
 	err = parseKnownHosts(knownHostsPath, hostMap)
 	if err != nil {
-		executor.logger.PrintfErr(logging.LogModeAppend, true, err.Error())
+		executor.logger.PrintfErr(logging.LogModeAppend, true, "%s", err.Error())
 	}
 	// 解析 etc_hosts
 	err = parseEtcHosts(hostMap)
 	if err != nil {
-		executor.logger.PrintfErr(logging.LogModeAppend, true, err.Error())
+		executor.logger.PrintfErr(logging.LogModeAppend, true, "%s", err.Error())
 	}
 	// 转换 map 为 slice
 	hosts := make([]Host, 0, len(hostMap))

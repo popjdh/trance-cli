@@ -165,7 +165,7 @@ func (executor *Executor) processFile(srcFilePath string) error {
 		if !strings.HasSuffix(cmdErrMsg, "\n") {
 			cmdErrMsg += "\n"
 		}
-		executor.logger.PrintfErr(logging.LogModeAppend, false, cmdErrMsg)
+		executor.logger.PrintfErr(logging.LogModeAppend, false, "%s", cmdErrMsg)
 		return fmt.Errorf("执行 exiftool 命令失败\n%w", err)
 	}
 	if executor.Verbose {
