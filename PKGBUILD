@@ -2,7 +2,7 @@
 
 pkgname=trance-cli
 _pkgname=trance
-pkgver=1.0.4
+pkgver=1.0.5
 pkgrel=1
 pkgdesc="A script snippet collection"
 arch=('x86_64')
@@ -12,6 +12,7 @@ depends=()
 optdepends=(
     'openssh: For "trance ssh" support'
     'libjxl: For "trance img cjxl" support'
+    'oxipng: For "trance img cjxl" support'
     'exiftool: For "trance img noexif" support'
     '7z: For "trance arc unpack" support'
     'unzip: For "trance arc unpack" support(Need by GBK chartset ZIP files)'
