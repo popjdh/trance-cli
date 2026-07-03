@@ -153,16 +153,48 @@ func (executor *Executor) processFile(srcFilePath string) error {
 	}
 	srcFileDir := filepath.Dir(srcFilePath)
 	srcFileBaseName := filepath.Base(srcFilePath)
-	ext := filepath.Ext(srcFileBaseName)
-	srcFileBaseNameNoExt := strings.TrimSuffix(srcFileBaseName, ext)
+	ext := strings.ToLower(filepath.Ext(srcFileBaseName))
+	srcFileBaseNameNoExt := strings.TrimSuffix(srcFileBaseName, filepath.Ext(srcFileBaseName))
 	destFilePath := filepath.Join(srcFileDir, srcFileBaseNameNoExt+".jxl")
 	if _, err := os.Stat(destFilePath); err == nil {
 		return fmt.Errorf("目标文件已存在")
 	}
+	cjxlInputPath := srcFilePath
+	// PNG 文件先执行 oxipng 优化, 用于移除 IEND 后存在数据
+	if ext == ".png" {
+		if executor.Verbose {
+			executor.logInProgress(srcFilePath, "创建临时文件")
+		}
+		tmpFile, err := os.CreateTemp(srcFileDir, "cjxl-*.png")
+		if err != nil {
+			return fmt.Errorf("无法创建临时文件\n%w", err)
+		}
+		defer func() {
+			_ = os.Remove(tmpFile.Name())
+		}()
+		tmpFilePath := tmpFile.Name()
+		_ = tmpFile.Close()
+		if executor.Verbose {
+			executor.logInProgress(srcFilePath, "执行 oxipng 命令")
+		}
+		cmd := exec.Command("oxipng", "--nx", "--nz", "--strip", "all", "--out", tmpFilePath, srcFilePath)
+		var cmdErr bytes.Buffer
+		cmd.Stdout = io.Discard
+		cmd.Stderr = &cmdErr
+		if err := cmd.Run(); err != nil {
+			cmdErrMsg := cmdErr.String()
+			if !strings.HasSuffix(cmdErrMsg, "\n") {
+				cmdErrMsg += "\n"
+			}
+			executor.logger.PrintfErr(logging.LogModeAppend, false, "%s", cmdErrMsg)
+			return fmt.Errorf("执行 oxipng 命令失败\n%w", err)
+		}
+		cjxlInputPath = tmpFilePath
+	}
 	if executor.Verbose {
 		executor.logInProgress(srcFilePath, "创建临时文件")
 	}
-	tmpFile, err := os.CreateTemp(srcFileDir, "to_jxl-*.jxl")
+	tmpFile, err := os.CreateTemp(srcFileDir, "cjxl-*.jxl")
 	if err != nil {
 		return fmt.Errorf("无法创建临时文件\n%w", err)
 	}
@@ -174,7 +206,7 @@ func (executor *Executor) processFile(srcFilePath string) error {
 	if executor.Verbose {
 		executor.logInProgress(srcFilePath, "执行 cjxl 命令")
 	}
-	cmd := exec.Command("cjxl", "-d", "0", srcFilePath, tmpFilePath)
+	cmd := exec.Command("cjxl", "-d", "0", cjxlInputPath, tmpFilePath)
 	var cmdErr bytes.Buffer
 	cmd.Stdout = io.Discard
 	cmd.Stderr = &cmdErr

@@ -24,7 +24,7 @@ var cmd = &cobra.Command{
 func Register(parentCmd *cobra.Command) {
 	cmd.Flags().BoolVarP(&executor.Verbose, "verbose", "v", false, "verbosely list files processed")
 	cmd.Flags().BoolVarP(&executor.Recursive, "recursion", "r", false, "recurse into directories")
-	if system.IsCommandAvailable("cjxl") {
+	if system.IsCommandAvailable("cjxl") && system.IsCommandAvailable("oxipng") {
 		parentCmd.AddCommand(cmd)
 	}
 }
